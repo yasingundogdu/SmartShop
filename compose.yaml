@@ -1,0 +1,89 @@
+﻿services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "check_port_connectivity" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  adminer:
+    image: adminer
+    depends_on: [postgres]
+    ports:
+      - "8081:8080"
+
+  customer-api:
+    build:
+      context: .
+      dockerfile: src/customer/Customer.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=customerdb;Username=postgres;Password=postgres"
+    depends_on: [postgres]
+    ports:
+      - "5101:8080"
+
+  product-api:
+    build:
+      context: .
+      dockerfile: src/product/Product.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=productdb;Username=postgres;Password=postgres"
+    depends_on: [postgres]
+    ports:
+      - "5102:8080"
+  
+  order-api:
+    build:
+      context: .
+      dockerfile: src/order/Order.Api/Dockerfile
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=orderdb;Username=postgres;Password=postgres"
+      Services__Customer: "http://customer-api:8080"
+      Services__Product: "http://product-api:8080"
+      
+
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__User: "guest"
+      RabbitMQ__Pass: "guest"
+      RabbitMQ__VirtualHost: "/"
+    ports:
+      - "5103:8080"
+
+  order-publisher:
+    build:
+      context: .
+      dockerfile: src/order/Order.Publisher/Dockerfile
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Database=orderdb;Username=postgres;Password=postgres"
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__User: "guest"
+      RabbitMQ__Pass: "guest"
+      
+volumes:
+  pgdata: {}
+  
