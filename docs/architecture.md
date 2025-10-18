@@ -1,4 +1,4 @@
-# 🧩 SmartShop Architecture (GitHub‑safe Mermaid)
+# 🧩 SmartShop Architecture (GitHub‑safe Mermaid v2)
 
 ## 1) Component Overview
 ```mermaid
@@ -9,11 +9,11 @@ flowchart LR
 
     subgraph Order_Service[Order API]
         OAPI[ASP.NET Core Controllers]
-        OAPP[Application (CQRS · MediatR)]
-        OINF[Infrastructure (EF Core, Refit, Messaging)]
+        OAPP[Application - CQRS and MediatR]
+        OINF[Infrastructure - EF Core Refit Messaging]
         ODB[(PostgreSQL)]
-        MQPUB[Event Publisher (RabbitMqEventPublisher)]
-        BGSVC[BackgroundService (OrderEventsAuditConsumer)]
+        MQPUB[Event Publisher - RabbitMqEventPublisher]
+        BGSVC[BackgroundService - OrderEventsAuditConsumer]
     end
 
     subgraph Customer_Service[Customer API]
@@ -27,22 +27,22 @@ flowchart LR
     end
 
     subgraph RabbitMQ
-        EX[Exchange: order.events]
-        Q[Queue: order.events.audit]
+        EX[Exchange order.events]
+        Q[Queue order.events.audit]
     end
 
     A -->|HTTP| OAPI
     OAPI -->|MediatR| OAPP
     OAPP -->|EF Core| ODB
 
-    OAPP -->|Refit · Polly| CAPI
-    OAPP -->|Refit · Polly| PAPI
+    OAPP -->|Refit and Polly| CAPI
+    OAPP -->|Refit and Polly| PAPI
     CAPI --> CDB
     PAPI --> PDB
 
     OAPP -->|IEventPublisher| MQPUB
     MQPUB --> EX
-    EX -->|bind: order.fulfilled| Q
+    EX -->|bind order.fulfilled| Q
     BGSVC --> Q
 ```
 > Note: DB schemas — order, customer, product.
