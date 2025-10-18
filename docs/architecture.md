@@ -1,29 +1,30 @@
 # 🧩 SmartShop Architecture
 
 ## 1) Component Overview
-```mermaid
+
+``` mermaid
 flowchart LR
     subgraph Client
         A[Client / Postman / Curl]
     end
 
     subgraph Order_Service[Order API]
-        OAPI[ASP.NET Core\nControllers]
-        OAPP[Application\n(CQRS / MediatR)]
-        OINF[Infrastructure\n(EF Core, Refit, Messaging)]
-        ODB[(PostgreSQL\nSchema: "order")]
-        MQPUB[Event Publisher\n(RabbitMqEventPublisher)]
-        BGSVC[BackgroundService\n(OrderEventsAuditConsumer)]
+        OAPI[ASP.NET Core<br/>Controllers]
+        OAPP[Application<br/>(CQRS / MediatR)]
+        OINF[Infrastructure<br/>(EF Core, Refit, Messaging)]
+        ODB[(PostgreSQL<br/>Schema: order)]
+        MQPUB[Event Publisher<br/>(RabbitMqEventPublisher)]
+        BGSVC[BackgroundService<br/>(OrderEventsAuditConsumer)]
     end
 
     subgraph Customer_Service[Customer API]
         CAPI[ASP.NET Core]
-        CDB[(PostgreSQL\nSchema: "customer")]
+        CDB[(PostgreSQL<br/>Schema: customer)]
     end
 
     subgraph Product_Service[Product API]
         PAPI[ASP.NET Core]
-        PDB[(PostgreSQL\nSchema: "product")]
+        PDB[(PostgreSQL<br/>Schema: product)]
     end
 
     subgraph RabbitMQ
@@ -47,13 +48,14 @@ flowchart LR
 ```
 
 ## 2) High-Level Class Diagram
-```mermaid
+
+``` mermaid
 classDiagram
     direction LR
 
     class OrderApi {
-        +GET /api/orders/fulfilled()
-        +PATCH /api/orders/{id}/fulfill()
+        +GET_orders_fulfilled()
+        +PATCH_orders_id_fulfill()
         -OrderDbContext
         -ICustomerClient
         -IProductClient
@@ -174,8 +176,12 @@ classDiagram
     OrderDbContext --> OrderLine
 ```
 
-## 3) Sequence – Get Fulfilled Orders
-```mermaid
+> Not (optional): `OrderApi` uç noktaları:\
+> `GET /api/orders/fulfilled` ve `PATCH /api/orders/{id}/fulfill`
+
+## 3) Sequence -- Get Fulfilled Orders
+
+``` mermaid
 sequenceDiagram
     autonumber
     participant C as Client
@@ -195,12 +201,13 @@ sequenceDiagram
     CC-->>APP: CustomerDto (or 404 → UNKNOWN)
     PC-->>APP: ProductDto (or 404 → UNKNOWN)
 
-    APP-->>OAPI: PagedResult<FulfilledOrderDto>
+    APP-->>OAPI: PagedResult&lt;FulfilledOrderDto&gt;
     OAPI-->>C: 200 OK (JSON)
 ```
 
-## 4) Sequence – Fulfill Order → Publish Event
-```mermaid
+## 4) Sequence -- Fulfill Order → Publish Event
+
+``` mermaid
 sequenceDiagram
     autonumber
     participant C as Client
@@ -215,7 +222,8 @@ sequenceDiagram
     OAPI->>APP: MediatR.Send(MarkFulfilledCommand)
     APP->>ODB: Load Order + Lines
     ODB-->>APP: Order aggregate
-    APP->>APP: order.MarkPaid(); order.MarkFulfilled(utc)
+    APP->>APP: order.MarkPaid()
+    APP->>APP: order.MarkFulfilled(utc)
     APP->>ODB: SaveChanges()
     APP->>PUB: PublishOrderFulfilledAsync(evt)
     PUB->>MQ: Publish(event, routingKey=order.fulfilled)
