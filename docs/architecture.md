@@ -1,4 +1,4 @@
-# 🧩 SmartShop Architecture (GitHub‑safe Mermaid v2)
+# 🧩 SmartShop Architecture
 
 ## 1) Component Overview
 ```mermaid
