@@ -1,30 +1,29 @@
-# 🧩 SmartShop Architecture
+# 🧩 SmartShop Architecture (GitHub‑safe Mermaid)
 
 ## 1) Component Overview
-
-``` mermaid
+```mermaid
 flowchart LR
     subgraph Client
-        A[Client / Postman / Curl]
+        A[Client - Postman - Curl]
     end
 
     subgraph Order_Service[Order API]
-        OAPI[ASP.NET Core<br/>Controllers]
-        OAPP[Application<br/>(CQRS / MediatR)]
-        OINF[Infrastructure<br/>(EF Core, Refit, Messaging)]
-        ODB[(PostgreSQL<br/>Schema: order)]
-        MQPUB[Event Publisher<br/>(RabbitMqEventPublisher)]
-        BGSVC[BackgroundService<br/>(OrderEventsAuditConsumer)]
+        OAPI[ASP.NET Core Controllers]
+        OAPP[Application (CQRS · MediatR)]
+        OINF[Infrastructure (EF Core, Refit, Messaging)]
+        ODB[(PostgreSQL)]
+        MQPUB[Event Publisher (RabbitMqEventPublisher)]
+        BGSVC[BackgroundService (OrderEventsAuditConsumer)]
     end
 
     subgraph Customer_Service[Customer API]
         CAPI[ASP.NET Core]
-        CDB[(PostgreSQL<br/>Schema: customer)]
+        CDB[(PostgreSQL)]
     end
 
     subgraph Product_Service[Product API]
         PAPI[ASP.NET Core]
-        PDB[(PostgreSQL<br/>Schema: product)]
+        PDB[(PostgreSQL)]
     end
 
     subgraph RabbitMQ
@@ -36,8 +35,8 @@ flowchart LR
     OAPI -->|MediatR| OAPP
     OAPP -->|EF Core| ODB
 
-    OAPP -->|Refit/Polly| CAPI
-    OAPP -->|Refit/Polly| PAPI
+    OAPP -->|Refit · Polly| CAPI
+    OAPP -->|Refit · Polly| PAPI
     CAPI --> CDB
     PAPI --> PDB
 
@@ -46,10 +45,10 @@ flowchart LR
     EX -->|bind: order.fulfilled| Q
     BGSVC --> Q
 ```
+> Note: DB schemas — order, customer, product.
 
-## 2) High-Level Class Diagram
-
-``` mermaid
+## 2) High‑Level Class Diagram
+```mermaid
 classDiagram
     direction LR
 
@@ -70,7 +69,7 @@ classDiagram
     }
 
     class GetFulfilledOrdersHandler {
-        +Handle(request, ct) PagedResult~FulfilledOrderDto~
+        +Handle(request, ct) PagedResult(FulfilledOrderDto)
     }
 
     class MarkFulfilledCommand {
@@ -83,8 +82,8 @@ classDiagram
     }
 
     class OrderDbContext {
-        +DbSet~Order~
-        +DbSet~OrderLine~
+        +DbSet(Order)
+        +DbSet(OrderLine)
     }
 
     class Order {
@@ -92,10 +91,10 @@ classDiagram
         +Guid CustomerId
         +DateTime CreatedAt
         +OrderStatus Status
-        +DateTime? PaidAt
-        +DateTime? FulfilledAt
-        +DateTime? CancelledAt
-        +ICollection~OrderLine~ Lines
+        +DateTime PaidAt
+        +DateTime FulfilledAt
+        +DateTime CancelledAt
+        +ICollection(OrderLine) Lines
         +MarkPaid()
         +MarkFulfilled(utcDate)
         +Cancel()
@@ -111,17 +110,17 @@ classDiagram
     class FulfilledOrderDto {
         +Guid OrderId
         +Guid CustomerId
-        +string? CustomerName
-        +string? CustomerEmail
-        +DateTime? FulfilledAt
+        +string CustomerName
+        +string CustomerEmail
+        +DateTime FulfilledAt
         +decimal Total
-        +IReadOnlyList~FulfilledOrderLineDto~ Lines
+        +IReadOnlyList(FulfilledOrderLineDto) Lines
     }
 
     class FulfilledOrderLineDto {
         +Guid ProductId
-        +string? ProductName
-        +string? Sku
+        +string ProductName
+        +string Sku
         +int Quantity
         +decimal UnitPrice
         +decimal LineTotal
@@ -152,7 +151,7 @@ classDiagram
         +Guid CustomerId
         +DateTimeOffset FulfilledAt
         +decimal Total
-        +IReadOnlyList~OrderFulfilledLine~ Lines
+        +IReadOnlyList(OrderFulfilledLine) Lines
     }
 
     class OrderFulfilledLine {
@@ -175,47 +174,43 @@ classDiagram
     OrderDbContext --> Order
     OrderDbContext --> OrderLine
 ```
+> Endpoints: GET /api/orders/fulfilled , PATCH /api/orders/{id}/fulfill
 
-> Not (optional): `OrderApi` uç noktaları:\
-> `GET /api/orders/fulfilled` ve `PATCH /api/orders/{id}/fulfill`
-
-## 3) Sequence -- Get Fulfilled Orders
-
-``` mermaid
+## 3) Sequence – Get Fulfilled Orders
+```mermaid
 sequenceDiagram
     autonumber
     participant C as Client
-    participant OAPI as Order API (Controller)
-    participant APP as Application (GetFulfilledOrdersHandler)
+    participant OAPI as Order API Controller
+    participant APP as Application GetFulfilledOrdersHandler
     participant ODB as OrderDbContext
-    participant CC as CustomerClient (Refit)
-    participant PC as ProductClient (Refit)
+    participant CC as CustomerClient Refit
+    participant PC as ProductClient Refit
 
     C->>OAPI: GET /api/orders/fulfilled?from&to&page&pageSize
     OAPI->>APP: MediatR.Send(GetFulfilledOrdersQuery)
-    APP->>ODB: Query fulfilled orders (UTC range) + Include Lines
+    APP->>ODB: Query fulfilled orders (UTC range) + include Lines
     ODB-->>APP: Paged order list
 
-    APP->>CC: GetCustomer(id) for distinct customerIds (Polly)
-    APP->>PC: GetProduct(id) for distinct productIds (Polly)
-    CC-->>APP: CustomerDto (or 404 → UNKNOWN)
-    PC-->>APP: ProductDto (or 404 → UNKNOWN)
+    APP->>CC: GetCustomer for distinct customerIds (Polly)
+    APP->>PC: GetProduct for distinct productIds (Polly)
+    CC-->>APP: CustomerDto or 404 -> UNKNOWN
+    PC-->>APP: ProductDto or 404 -> UNKNOWN
 
-    APP-->>OAPI: PagedResult&lt;FulfilledOrderDto&gt;
-    OAPI-->>C: 200 OK (JSON)
+    APP-->>OAPI: PagedResult(FulfilledOrderDto)
+    OAPI-->>C: 200 OK JSON
 ```
 
-## 4) Sequence -- Fulfill Order → Publish Event
-
-``` mermaid
+## 4) Sequence – Fulfill Order -> Publish Event
+```mermaid
 sequenceDiagram
     autonumber
     participant C as Client
-    participant OAPI as Order API (Controller)
-    participant APP as Application (MarkFulfilledCommandHandler)
+    participant OAPI as Order API Controller
+    participant APP as Application MarkFulfilledCommandHandler
     participant ODB as OrderDbContext
     participant PUB as IEventPublisher
-    participant MQ as RabbitMQ (order.events)
+    participant MQ as RabbitMQ order.events
     participant CON as OrderEventsAuditConsumer
 
     C->>OAPI: PATCH /api/orders/{id}/fulfill?fulfilledAtUtc=...
@@ -226,7 +221,7 @@ sequenceDiagram
     APP->>APP: order.MarkFulfilled(utc)
     APP->>ODB: SaveChanges()
     APP->>PUB: PublishOrderFulfilledAsync(evt)
-    PUB->>MQ: Publish(event, routingKey=order.fulfilled)
-    MQ-->>CON: Deliver message to queue (order.events.audit)
+    PUB->>MQ: Publish event routingKey=order.fulfilled
+    MQ-->>CON: Deliver message to queue order.events.audit
     OAPI-->>C: 204 No Content
 ```
