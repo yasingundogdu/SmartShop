@@ -45,7 +45,7 @@ flowchart LR
     CAPI --> CDB
     PAPI --> PDB
 
-    %% Outbox: App is writting, Publisher is reading
+    %% Outbox: App is writing, Publisher is reading
     OAPP -->|Append OutboxMessage| OUTBOX
     BGSVC -->|Read Pending| OUTBOX
     BGSVC --> MQPUB
@@ -106,17 +106,11 @@ classDiagram
         +Guid Id
         +string Type
         +string Payload
-        +OutboxStatus Status
+        +string Status
         +DateTime OccurredAtUtc
         +DateTime? ProcessedAtUtc
         +int RetryCount
         +string? Error
-    }
-
-    enum OutboxStatus {
-        Pending
-        Processed
-        Failed
     }
 
     class Order {
@@ -200,6 +194,8 @@ classDiagram
     Order --> OrderLine
     OrderDbContext --> Order
     OrderDbContext --> OrderLine
+
+    note for OutboxMessage "Status values: Pending | Processed | Failed"
 ```
 > Endpoints: GET /api/orders/fulfilled , PATCH /api/orders/{id}/fulfill
 
@@ -246,17 +242,18 @@ sequenceDiagram
     OAPI->>APP: MediatR.Send(MarkFulfilledCommand)
     APP->>ODB: Load Order + Lines
     ODB-->>APP: Order aggregate
-    APP->>APP: order.MarkPaid(); order.MarkFulfilled(utc)
-    APP->>ODB: SaveChanges()
-    APP->>OBX: Append OutboxMessage(type="OrderFulfilledEvent", payload=evt)
+    APP->>APP: order.MarkPaid
+    APP->>APP: order.MarkFulfilled utc
+    APP->>ODB: SaveChanges
+    APP->>OBX: Append OutboxMessage type OrderFulfilledEvent
     OAPI-->>C: 204 No Content
 
     loop Background loop
         WRK->>OBX: Read Pending batch
         OBX-->>WRK: Messages
-        WRK->>PUB: PublishRaw(exchange="order.events", rk="order.fulfilled", body=payload)
+        WRK->>PUB: PublishRaw exchange order.events rk order.fulfilled
         PUB->>MQ: Publish
         MQ-->>CON: Deliver to queue order.events.audit
-        WRK->>OBX: Mark Processed/Failed (+retry)
+        WRK->>OBX: Mark Processed or Failed then retry
     end
 ```
