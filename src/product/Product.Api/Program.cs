@@ -5,7 +5,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Product.Api.Startup;
+using Product.Application.Abstractions;
+using Product.Application.Products.Queries;
 using Product.Infrastructure.Persistence;
+using Product.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +23,12 @@ var conn =
 
 builder.Services.AddDbContext<ProductDbContext>(opt =>
     opt.UseNpgsql(conn, npg => npg.MigrationsHistoryTable("__ef_migrations_history", "product")));
+
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(GetProductByIdQuery).Assembly);
+});
+builder.Services.AddScoped<IProductRepository, ProductRepository>();
 
 var app = builder.Build();
 

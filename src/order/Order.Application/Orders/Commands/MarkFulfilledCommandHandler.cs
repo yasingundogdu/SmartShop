@@ -1,10 +1,10 @@
 using System.Text.Json;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Order.Application.Abstractions.Db;      
 using Order.Application.Orders.Events;     
 using Order.Domain.Outbox; 
-using Microsoft.EntityFrameworkCore;
 
 namespace Order.Application.Orders.Commands;
 

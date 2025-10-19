@@ -1,7 +1,10 @@
 ﻿using Customer.Api.Startup;
+using Customer.Application.Abstractions;
+using Customer.Application.Customers.Queries;
 using Customer.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Customer.Infrastructure.Repositories;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -20,6 +23,12 @@ var conn =
 
 builder.Services.AddDbContext<CustomerDbContext>(opt =>
     opt.UseNpgsql(conn, npg => npg.MigrationsHistoryTable("__ef_migrations_history", "customer")));
+
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(GetCustomerByIdQuery).Assembly);
+});
+builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 
 var app = builder.Build();
 

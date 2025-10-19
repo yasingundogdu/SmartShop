@@ -1,7 +1,7 @@
 using System;
 using FluentAssertions;
-using Xunit;
 using Order.Domain.Entities;
+using Xunit;
 
 namespace SmartShop.Domain.Tests;
 

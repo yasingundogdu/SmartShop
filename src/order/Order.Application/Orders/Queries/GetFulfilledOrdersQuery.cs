@@ -1,5 +1,5 @@
-using MediatR;
 using FluentValidation;
+using MediatR;
 using Order.Application.Orders.Dtos;
 
 namespace Order.Application.Orders.Queries;
