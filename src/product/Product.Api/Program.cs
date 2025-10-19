@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Product.Api.Startup;
 using Product.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -34,7 +36,10 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ProductDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("CustomerBootstrap");
     db.Database.Migrate();
+    await ProductSeed.EnsureAsync(db, logger);
 }
 
 app.Run();

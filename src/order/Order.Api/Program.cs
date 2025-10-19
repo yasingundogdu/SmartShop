@@ -5,8 +5,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Order.Api.Messaging;                 
+using Order.Api.Messaging;
+using Order.Api.Startup;
 using Order.Application.Abstractions.Db;    
 using Order.Application.Abstractions.Messaging;
 using Order.Application.Orders.Queries;      
@@ -111,7 +113,10 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<OrderDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("CustomerBootstrap");
     db.Database.Migrate();
+    await OrderSeed.EnsureAsync(db, logger);
 }
 
 app.Run();

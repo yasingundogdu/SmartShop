@@ -12,8 +12,12 @@ flowchart LR
         OAPP[Application - CQRS and MediatR]
         OINF[Infrastructure - EF Core Refit Messaging]
         ODB[(PostgreSQL)]
+        OUTBOX[(order.outbox_message)]
+    end
+
+    subgraph Order_Publisher[Order.Publisher]
+        BGSVC[BackgroundService - OutboxPublisherWorker]
         MQPUB[Event Publisher - RabbitMqEventPublisher]
-        BGSVC[BackgroundService - OrderEventsAuditConsumer]
     end
 
     subgraph Customer_Service[Customer API]
@@ -31,6 +35,7 @@ flowchart LR
         Q[Queue order.events.audit]
     end
 
+    %% Flows
     A -->|HTTP| OAPI
     OAPI -->|MediatR| OAPP
     OAPP -->|EF Core| ODB
@@ -40,10 +45,12 @@ flowchart LR
     CAPI --> CDB
     PAPI --> PDB
 
-    OAPP -->|IEventPublisher| MQPUB
+    %% Outbox: App is writting, Publisher is reading
+    OAPP -->|Append OutboxMessage| OUTBOX
+    BGSVC -->|Read Pending| OUTBOX
+    BGSVC --> MQPUB
     MQPUB --> EX
     EX -->|bind order.fulfilled| Q
-    BGSVC --> Q
 ```
 > Note: DB schemas — order, customer, product.
 
@@ -58,7 +65,6 @@ classDiagram
         -OrderDbContext
         -ICustomerClient
         -IProductClient
-        -IEventPublisher
     }
 
     class GetFulfilledOrdersQuery {
@@ -70,6 +76,9 @@ classDiagram
 
     class GetFulfilledOrdersHandler {
         +Handle(request, ct) PagedResult(FulfilledOrderDto)
+        -OrderDbContext
+        -ICustomerClient
+        -IProductClient
     }
 
     class MarkFulfilledCommand {
@@ -79,11 +88,35 @@ classDiagram
 
     class MarkFulfilledCommandHandler {
         +Handle(request, ct) Task
+        -OrderDbContext
+        -IOutboxWriter
     }
 
     class OrderDbContext {
         +DbSet(Order)
         +DbSet(OrderLine)
+        +DbSet(OutboxMessage)
+    }
+
+    class IOutboxWriter {
+        +Append(type:string, payload:string) Task
+    }
+
+    class OutboxMessage {
+        +Guid Id
+        +string Type
+        +string Payload
+        +OutboxStatus Status
+        +DateTime OccurredAtUtc
+        +DateTime? ProcessedAtUtc
+        +int RetryCount
+        +string? Error
+    }
+
+    enum OutboxStatus {
+        Pending
+        Processed
+        Failed
     }
 
     class Order {
@@ -91,9 +124,9 @@ classDiagram
         +Guid CustomerId
         +DateTime CreatedAt
         +OrderStatus Status
-        +DateTime PaidAt
-        +DateTime FulfilledAt
-        +DateTime CancelledAt
+        +DateTime? PaidAt
+        +DateTime? FulfilledAt
+        +DateTime? CancelledAt
         +ICollection(OrderLine) Lines
         +MarkPaid()
         +MarkFulfilled(utcDate)
@@ -112,7 +145,7 @@ classDiagram
         +Guid CustomerId
         +string CustomerName
         +string CustomerEmail
-        +DateTime FulfilledAt
+        +DateTime? FulfilledAt
         +decimal Total
         +IReadOnlyList(FulfilledOrderLineDto) Lines
     }
@@ -133,43 +166,37 @@ classDiagram
         +GetProduct(id, ct) ProductDto
     }
 
+    %% Publisher Side
+    class OutboxPublisherWorker {
+        +ExecuteAsync(ct) Task
+        -IOrderDbContext
+        -IEventPublisher
+    }
+
     class IEventPublisher {
-        +PublishOrderFulfilledAsync(evt, ct) Task
+        +PublishRawAsync(exchange, routingKey, bodyUtf8, ct) Task
     }
 
     class RabbitMqEventPublisher {
         -IModel channel
-        +PublishOrderFulfilledAsync(evt, ct) Task
+        +PublishRawAsync(exchange, routingKey, bodyUtf8, ct) Task
     }
 
-    class OrderEventsAuditConsumer {
-        +ExecuteAsync(ct) Task
-    }
-
-    class OrderFulfilledEvent {
-        +Guid OrderId
-        +Guid CustomerId
-        +DateTimeOffset FulfilledAt
-        +decimal Total
-        +IReadOnlyList(OrderFulfilledLine) Lines
-    }
-
-    class OrderFulfilledLine {
-        +Guid ProductId
-        +int Quantity
-        +decimal UnitPrice
-    }
-
+    %% Relations
     OrderApi --> GetFulfilledOrdersQuery
     OrderApi --> MarkFulfilledCommand
     GetFulfilledOrdersHandler --> OrderDbContext
     GetFulfilledOrdersHandler --> ICustomerClient
     GetFulfilledOrdersHandler --> IProductClient
+
     MarkFulfilledCommandHandler --> OrderDbContext
-    MarkFulfilledCommandHandler --> IEventPublisher
+    MarkFulfilledCommandHandler --> IOutboxWriter
+    OrderDbContext --> OutboxMessage
+
+    OutboxPublisherWorker --> IEventPublisher
+    OutboxPublisherWorker --> OrderDbContext
     IEventPublisher <|.. RabbitMqEventPublisher
-    RabbitMqEventPublisher --> OrderFulfilledEvent
-    OrderEventsAuditConsumer --> OrderFulfilledEvent
+
     Order --> OrderLine
     OrderDbContext --> Order
     OrderDbContext --> OrderLine
@@ -207,8 +234,10 @@ sequenceDiagram
     autonumber
     participant C as Client
     participant OAPI as Order API Controller
-    participant APP as Application MarkFulfilledCommandHandler
+    participant APP as MarkFulfilledCommandHandler
     participant ODB as OrderDbContext
+    participant OBX as Outbox (order.outbox_message)
+    participant WRK as OutboxPublisherWorker
     participant PUB as IEventPublisher
     participant MQ as RabbitMQ order.events
     participant CON as OrderEventsAuditConsumer
@@ -217,11 +246,17 @@ sequenceDiagram
     OAPI->>APP: MediatR.Send(MarkFulfilledCommand)
     APP->>ODB: Load Order + Lines
     ODB-->>APP: Order aggregate
-    APP->>APP: order.MarkPaid()
-    APP->>APP: order.MarkFulfilled(utc)
+    APP->>APP: order.MarkPaid(); order.MarkFulfilled(utc)
     APP->>ODB: SaveChanges()
-    APP->>PUB: PublishOrderFulfilledAsync(evt)
-    PUB->>MQ: Publish event routingKey=order.fulfilled
-    MQ-->>CON: Deliver message to queue order.events.audit
+    APP->>OBX: Append OutboxMessage(type="OrderFulfilledEvent", payload=evt)
     OAPI-->>C: 204 No Content
+
+    loop Background loop
+        WRK->>OBX: Read Pending batch
+        OBX-->>WRK: Messages
+        WRK->>PUB: PublishRaw(exchange="order.events", rk="order.fulfilled", body=payload)
+        PUB->>MQ: Publish
+        MQ-->>CON: Deliver to queue order.events.audit
+        WRK->>OBX: Mark Processed/Failed (+retry)
+    end
 ```
