@@ -178,8 +178,6 @@ dotnet test tests/SmartShop.Domain.Tests/SmartShop.Domain.Tests.csproj \
 
 ---
 
-### 🔭 Future Improvements
-_(place at the end of the README)_
 
 ## 🔭 Future Improvements
 
