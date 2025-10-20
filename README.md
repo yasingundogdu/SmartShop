@@ -78,12 +78,13 @@ Each microservice automatically applies EF Core **migrations** and runs an **ide
 ### ✅ Verifying the seed
 Check container logs:
 ```bash
+
 docker compose logs -f customer-api
 docker compose logs -f product-api
 docker compose logs -f order-api
+```
 
-
-##🧾 Order Service
+🧾 Order Service
 
 Get Fulfilled Orders
 ```bash
